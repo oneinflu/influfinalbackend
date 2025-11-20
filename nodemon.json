@@ -1,0 +1,13 @@
+{
+  "watch": ["src"],
+  "ext": "js,json",
+  "ignore": [
+    "public",
+    "node_modules",
+    "../client/**"
+  ],
+  "delay": "200ms",
+  "env": {
+    "NODE_ENV": "development"
+  }
+}
