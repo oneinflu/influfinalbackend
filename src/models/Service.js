@@ -25,7 +25,6 @@ const PricingPlanSchema = new mongoose.Schema(
       type: String,
       enum: ['per_project', 'per_post', 'per_month', 'retainer', 'hourly'],
       default: 'per_project',
-      index: true,
     },
     notes: { type: String, trim: true, maxlength: 1000 },
   },

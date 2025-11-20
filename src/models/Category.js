@@ -19,7 +19,7 @@ function slugify(str) {
 const CategorySchema = new mongoose.Schema(
   {
     // Human-readable category name
-    name: { type: String, required: true, trim: true, index: true },
+    name: { type: String, required: true, trim: true },
 
     // URL-friendly identifier; unique and lowercased
     slug: {
@@ -27,12 +27,10 @@ const CategorySchema = new mongoose.Schema(
       required: true,
       trim: true,
       lowercase: true,
-      unique: true,
-      index: true,
     },
 
     // Optional parent pointing to another Category (supports hierarchy)
-    parent: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', default: null, index: true },
+    parent: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', default: null },
 
     // Optional image URL for the category
     image: { type: String,  trim: true },
@@ -41,7 +39,7 @@ const CategorySchema = new mongoose.Schema(
     description: { type: String, trim: true },
 
     // Active flag to control visibility/usage
-    is_active: { type: Boolean, default: true, index: true },
+    is_active: { type: Boolean, default: true }
   },
   {
     // Map timestamps to snake_case names as requested

@@ -33,8 +33,6 @@ const PermissionGroupSchema = new mongoose.Schema(
       required: true,
       trim: true,
       lowercase: true,
-      unique: true,
-      index: true,
     },
 
     // Display name (e.g., Invoice Management)

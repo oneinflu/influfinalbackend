@@ -25,7 +25,7 @@ const UploadSchema = new mongoose.Schema(
 
 const InvoiceAttachmentSchema = new mongoose.Schema(
   {
-    invoice_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice', default: null, index: true },
+    invoice_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice', default: null },
     attached_on: { type: Date },
   },
   { _id: false }

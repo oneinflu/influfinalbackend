@@ -27,10 +27,10 @@ const RoleSchema = new mongoose.Schema(
     assigned_users: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
 
     // Whether this is a system-provided role (global); system roles typically have no owner
-    is_system_role: { type: Boolean, default: false, index: true },
+    is_system_role: { type: Boolean, default: false },
 
     // Owner of the role (the account/user who created it)
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 
     // Locked roles cannot be edited or deleted (e.g., Owner Admin)
     locked: { type: Boolean, default: false, index: true },

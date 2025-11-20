@@ -44,7 +44,7 @@ const InvoiceSchema = new mongoose.Schema(
     // Associations
     created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
-    project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', index: true },
+    project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
 
     // Linked payments
     payments: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Payment', default: [] }],

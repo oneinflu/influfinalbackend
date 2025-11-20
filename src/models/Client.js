@@ -117,15 +117,9 @@ const ClientSchema = new mongoose.Schema(
 );
 
 // Indexes
-ClientSchema.index({ business_name: 1 });
-ClientSchema.index({ industry: 1 });
-ClientSchema.index({ type: 1 });
-ClientSchema.index({ invoice_type: 1 });
-ClientSchema.index({ status: 1 });
 ClientSchema.index({ 'location.country': 1, 'location.city': 1 });
 ClientSchema.index({ 'point_of_contact.email': 1 }, { sparse: true });
 ClientSchema.index({ 'point_of_contact.phone': 1 }, { sparse: true });
-ClientSchema.index({ added_by: 1 });
 
 // Export model
 const Client = mongoose.model('Client', ClientSchema);

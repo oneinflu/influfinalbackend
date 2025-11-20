@@ -13,8 +13,8 @@ function slugify(str) {
 
 const ContentTypeSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true, trim: true, unique: true, index: true },
-    slug: { type: String, unique: true, sparse: true, index: true, trim: true },
+    name: { type: String, required: true, trim: true },
+    slug: { type: String, trim: true },
     description: { type: String, trim: true, maxlength: 500 },
     status: { type: String, enum: ['active', 'inactive'], default: 'active', index: true },
   },

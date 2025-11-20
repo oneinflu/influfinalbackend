@@ -28,9 +28,7 @@ const AdminSchema = new mongoose.Schema(
       required: true,
       lowercase: true,
       trim: true,
-      unique: true,
       match: [EMAIL_REGEX, 'Invalid email address'],
-      index: true,
     },
 
     // Password hash (store hashed/encoded passwords only, never plaintext)
@@ -40,10 +38,7 @@ const AdminSchema = new mongoose.Schema(
     phone: {
       type: String,
       trim: true,
-      unique: true,
-      sparse: true, // allow multiple docs with no phone
       match: [PHONE_REGEX, 'Invalid phone number'],
-      index: true,
     },
 
     // Avatar image URL for admin profile
@@ -54,7 +49,6 @@ const AdminSchema = new mongoose.Schema(
       type: String,
       enum: ['super-admin', 'admin', 'moderator'],
       default: 'super-admin',
-      index: true,
     },
 
     // Account status for access control
@@ -62,7 +56,6 @@ const AdminSchema = new mongoose.Schema(
       type: String,
       enum: ['active', 'inactive', 'banned'],
       default: 'active',
-      index: true,
     },
 
     // Timestamp of last successful login

@@ -47,21 +47,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 // Debug: print env variables used by the server (safely masked)
-function mask(val) {
-  if (!val) return '';
-  const s = String(val);
-  if (s.length <= 8) return '*'.repeat(s.length);
-  return s.slice(0, 4) + '...' + s.slice(-4);
-}
-console.log('[ENV] NODE_ENV:', process.env.NODE_ENV || '');
-console.log('[ENV] PORT:', process.env.PORT || '');
-console.log('[ENV] MONGO_URI:', process.env.MONGO_URI ? mask(process.env.MONGO_URI) : '');
-console.log('[ENV] DB_NAME:', process.env.DB_NAME || '');
-console.log('[ENV] JWT_SECRET:', process.env.JWT_SECRET ? mask(process.env.JWT_SECRET) : '');
-console.log('[ENV] JWT_EXPIRES_IN:', process.env.JWT_EXPIRES_IN || '');
-console.log('[ENV] BUNNY_STORAGE_ZONE:', process.env.BUNNY_STORAGE_ZONE || '');
-console.log('[ENV] BUNNY_CDN_BASE_URL:', process.env.BUNNY_CDN_BASE_URL || '');
-console.log('[ENV] BUNNY_ACCESS_KEY:', process.env.BUNNY_ACCESS_KEY ? mask(process.env.BUNNY_ACCESS_KEY) : '');
+
 
 // Middleware
 // Enable CORS so the frontend (even if hosted on a different domain) can call the API

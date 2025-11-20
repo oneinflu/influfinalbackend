@@ -145,7 +145,6 @@ const UserSchema = new mongoose.Schema(
         type: String,
         lowercase: true,
         trim: true,
-        unique: true,
         required: true,
         match: [EMAIL_REGEX, 'Invalid email address'],
       },
@@ -153,8 +152,6 @@ const UserSchema = new mongoose.Schema(
       phone: {
         type: String,
         trim: true,
-        unique: true,
-        sparse: true, // allow multiple nulls/undefined without unique constraint conflicts
         match: [PHONE_REGEX, 'Invalid phone number'],
       },
       // Password hash storage (never store plain text)
@@ -177,14 +174,12 @@ const UserSchema = new mongoose.Schema(
       primaryRole: {
         type: String,
         enum: ['influencer', 'model', 'agency', 'manager', 'business','UGC creator','Editor', 'Scriptwriter', 'Voice-over artist','Actor','Designer','Photographer','Videographer'],
-       
-        index: true,
       },
       isOwner: { type: Boolean, default: false },
       // Invite code used during signup; unique and indexed
-      inviteCode: { type: String, unique: true, index: true, sparse: true },
+      inviteCode: { type: String },
       // Reference to the inviting user (nullable)
-      invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
     },
 
     // Profile section: public-facing information and measurements
@@ -192,12 +187,9 @@ const UserSchema = new mongoose.Schema(
       // Unique slug for profile URLs; indexed unique
       slug: {
         type: String,
-        unique: true,
-        index: true,
-        sparse: true,
         trim: true,
         validate: [isValidSlug, 'Invalid slug'],
-      },
+      }},
       // Short bio limited to ~300 characters
       shortBio: { type: String, maxlength: 300, trim: true },
       // Gender selection from allowed options
@@ -223,7 +215,7 @@ const UserSchema = new mongoose.Schema(
       },
       // Portfolio entries (images, videos, links)
       portfolio: [PortfolioItemSchema],
-    },
+    
 
     // Business information details for business users
     businessInformation: {
@@ -247,7 +239,7 @@ const UserSchema = new mongoose.Schema(
       },
     },
 
-    // Payment methods and verification status
+  
     paymentInformation: [PaymentInformationSchema],
 
     // Preferences controlling communication and privacy
