@@ -19,7 +19,7 @@ const QuotationSchema = new Schema(
     quantity: { type: Number, required: true, min: 1 },
     totalCost: { type: Number, required: true, min: 0 },
     taxes: { type: Schema.Types.Mixed, default: {} },
-    paymentTerms: { type: String, default: null },
+    paymentTerms: { type: [String], default: [] },
     validity: { type: Number, default: null },
     addOns: { type: [AddonSchema], default: [] },
     isActive: { type: Boolean, default: true },

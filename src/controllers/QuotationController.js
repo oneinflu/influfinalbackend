@@ -107,7 +107,7 @@ const QuotationController = {
           quantity: Math.max(1, Number(payload.quantity)),
           totalCost: Math.round(Number(payload.totalCost)),
           taxes: payload.taxes ?? {},
-          paymentTerms: payload.paymentTerms ?? null,
+          paymentTerms: Array.isArray(payload.paymentTerms) ? payload.paymentTerms : [],
           validity: payload.validity ?? null,
           addOns: Array.isArray(payload.addOns) ? payload.addOns : [],
           isActive: payload.isActive !== undefined ? !!payload.isActive : true,
@@ -150,7 +150,7 @@ const QuotationController = {
       if (payload.quantity !== undefined) update.quantity = Math.max(1, Number(payload.quantity));
       if (payload.totalCost !== undefined) update.totalCost = Math.round(Number(payload.totalCost));
       if (payload.taxes !== undefined) update.taxes = payload.taxes ?? {};
-      if (payload.paymentTerms !== undefined) update.paymentTerms = payload.paymentTerms ?? null;
+      if (payload.paymentTerms !== undefined) update.paymentTerms = Array.isArray(payload.paymentTerms) ? payload.paymentTerms : [];
       if (payload.validity !== undefined) update.validity = payload.validity ?? null;
       if (Array.isArray(payload.addOns)) update.addOns = payload.addOns.map((a) => ({ ...a, price: Math.round(Number(a.price)), name: String(a.name || '').trim() }));
       if (payload.isActive !== undefined) update.isActive = !!payload.isActive;
