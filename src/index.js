@@ -39,6 +39,7 @@ import uploadsRouter from './routes/uploads.js';
 import emailRouter from './routes/email.js';
 import otpRouter from './routes/otp.js';
 import rateCardsRouter from './routes/rateCards.js';
+import quotationsRouter from './routes/quotations.js';
 
 // Environment variables (PORT, MONGO_URI, etc.) are initialized via side-effect import above
 
@@ -107,6 +108,7 @@ app.use('/api/email', emailRouter);
 // OTP endpoints (send, verify, resend)
 app.use('/api/otp', otpRouter);
 app.use('/api/rate-cards', rateCardsRouter);
+app.use('/api/quotations', quotationsRouter);
 
 // Static serving for frontend build (if present)
 // Serve the production frontend build (if present) from server/public
