@@ -13,7 +13,7 @@ const AddonSchema = new Schema(
 const RateCardSchema = new Schema(
   {
     serviceId: { type: Schema.Types.ObjectId, ref: 'Service', required: true },
-    ownerType: { type: String, required: true, enum: ['collaborator', 'agency', 'agency_internal', 'platform'] },
+    ownerType: { type: String, required: true, enum: ['collaborator', 'agency', 'agency_internal'] },
     ownerRef: { type: Schema.Types.ObjectId, required: true },
     title: { type: String, trim: true, default: null },
     price: { type: Number, required: true, min: 0 },

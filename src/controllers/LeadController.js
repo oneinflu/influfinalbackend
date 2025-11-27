@@ -31,9 +31,11 @@ const LeadController = {
       let ownerScopeId = null;
       let allowedTeamIds = null;
       let allowedServiceIds = null;
+      let isOwner = false;
       if (auth.type !== 'admin') {
         const entity = auth.entity || {};
-        if (entity?.registration?.isOwner) {
+        isOwner = entity?.registration?.isOwner === true;
+        if (isOwner) {
           ownerScopeId = new mongoose.Types.ObjectId(auth.id);
         } else {
           const email = entity?.registration?.email;
@@ -47,16 +49,16 @@ const LeadController = {
           );
           if (!hasView) return res.status(403).json({ error: 'Forbidden: missing view_lead permission' });
           ownerScopeId = tm.managed_by;
+          const teams = await TeamMember.find({ managed_by: ownerScopeId, status: 'active' }).select('_id').lean();
+          allowedTeamIds = teams.map((t) => t._id);
+          const services = await Service.find({ user_id: ownerScopeId }).select('_id').lean();
+          allowedServiceIds = services.map((s) => s._id);
         }
-        const teams = await TeamMember.find({ managed_by: ownerScopeId, status: 'active' }).select('_id').lean();
-        allowedTeamIds = teams.map((t) => t._id);
-        const services = await Service.find({ user_id: ownerScopeId }).select('_id').lean();
-        allowedServiceIds = services.map((s) => s._id);
       }
       if (assigned_to) {
         const oid = parseObjectId(assigned_to);
         if (!oid) return res.status(400).json({ error: 'Invalid assigned_to' });
-        if (auth.type !== 'admin' && allowedTeamIds && !allowedTeamIds.some((id) => String(id) === String(oid))) {
+        if (auth.type !== 'admin' && !isOwner && allowedTeamIds && !allowedTeamIds.some((id) => String(id) === String(oid))) {
           return res.status(403).json({ error: 'Forbidden: assigned_to not in scope' });
         }
         filter.assigned_to = oid;
@@ -64,12 +66,12 @@ const LeadController = {
       if (service) {
         const oid = parseObjectId(service);
         if (!oid) return res.status(400).json({ error: 'Invalid service' });
-        if (auth.type !== 'admin' && allowedServiceIds && !allowedServiceIds.some((id) => String(id) === String(oid))) {
+        if (auth.type !== 'admin' && !isOwner && allowedServiceIds && !allowedServiceIds.some((id) => String(id) === String(oid))) {
           return res.status(403).json({ error: 'Forbidden: service not in scope' });
         }
         filter.looking_for = oid;
       }
-      if (auth.type !== 'admin' && !assigned_to && !service) {
+      if (auth.type !== 'admin' && !isOwner && !assigned_to && !service) {
         // Default scope for non-admin when no explicit filters provided
         filter.$or = [
           { assigned_to: { $in: allowedTeamIds } },
@@ -108,10 +110,9 @@ const LeadController = {
       if (!doc) return res.status(404).json({ error: 'Lead not found' });
       if (auth.type !== 'admin') {
         const entity = auth.entity || {};
+        const isOwner = entity?.registration?.isOwner === true;
         let ownerScopeId = null;
-        if (entity?.registration?.isOwner) {
-          ownerScopeId = auth.id;
-        } else {
+        if (!isOwner) {
           const email = entity?.registration?.email;
           if (!email) return res.status(403).json({ error: 'Forbidden' });
           const tm = await TeamMember.findOne({ email, status: 'active' }).select('role managed_by').lean();
@@ -123,17 +124,17 @@ const LeadController = {
           );
           if (!hasView) return res.status(403).json({ error: 'Forbidden: missing view_lead permission' });
           ownerScopeId = tm.managed_by;
+          // Scope: lead assigned to owner's team OR looking_for owner's services
+          const allowedTeam = await TeamMember.find({ managed_by: ownerScopeId, status: 'active' }).select('_id').lean();
+          const allowedTeamIds = allowedTeam.map((t) => String(t._id));
+          let inScope = (doc.assigned_to && allowedTeamIds.includes(String(doc.assigned_to)));
+          if (!inScope) {
+            const services = await Service.find({ user_id: ownerScopeId }).select('_id').lean();
+            const allowedServiceIds = services.map((s) => String(s._id));
+            inScope = (doc.looking_for || []).some((sid) => allowedServiceIds.includes(String(sid)));
+          }
+          if (!inScope) return res.status(403).json({ error: 'Forbidden: lead not in scope' });
         }
-        // Scope: lead assigned to owner's team OR looking_for owner's services
-        const allowedTeam = await TeamMember.find({ managed_by: ownerScopeId, status: 'active' }).select('_id').lean();
-        const allowedTeamIds = allowedTeam.map((t) => String(t._id));
-        let inScope = (doc.assigned_to && allowedTeamIds.includes(String(doc.assigned_to)));
-        if (!inScope) {
-          const services = await Service.find({ user_id: ownerScopeId }).select('_id').lean();
-          const allowedServiceIds = services.map((s) => String(s._id));
-          inScope = (doc.looking_for || []).some((sid) => allowedServiceIds.includes(String(sid)));
-        }
-        if (!inScope) return res.status(403).json({ error: 'Forbidden: lead not in scope' });
       }
       return res.json(doc);
     } catch (err) {
@@ -154,8 +155,9 @@ const LeadController = {
       let ownerScopeId = null;
       if (auth.type !== 'admin') {
         const entity = auth.entity || {};
-        let allowed = false;
-        if (entity?.registration?.isOwner) {
+       
+        const isOwner = entity?.registration?.isOwner === true;
+        if (isOwner) {
           ownerScopeId = new mongoose.Types.ObjectId(auth.id);
           allowed = true;
         } else {
@@ -178,20 +180,28 @@ const LeadController = {
         const aid = parseObjectId(payload.assigned_to);
         if (!aid) return res.status(400).json({ error: 'Invalid assigned_to' });
         if (auth.type !== 'admin') {
-          const assignedTm = await TeamMember.findById(aid).select('managed_by status').lean();
-          if (!assignedTm || String(assignedTm.managed_by) !== String(ownerScopeId) || assignedTm.status !== 'active') {
-            return res.status(403).json({ error: 'Forbidden: assigned_to not in scope' });
+          const entity = auth.entity || {};
+          const isOwner = entity?.registration?.isOwner === true;
+          if (!isOwner) {
+            const assignedTm = await TeamMember.findById(aid).select('managed_by status').lean();
+            if (!assignedTm || String(assignedTm.managed_by) !== String(ownerScopeId) || assignedTm.status !== 'active') {
+              return res.status(403).json({ error: 'Forbidden: assigned_to not in scope' });
+            }
           }
         }
       }
       // Validate looking_for services within scope
       if (Array.isArray(payload.looking_for) && auth.type !== 'admin') {
-        for (const sid of payload.looking_for) {
-          const oid = parseObjectId(sid);
-          if (!oid) return res.status(400).json({ error: 'Invalid service in looking_for' });
-          const svc = await Service.findById(oid).select('user_id').lean();
-          if (!svc || String(svc.user_id) !== String(ownerScopeId)) {
-            return res.status(403).json({ error: 'Forbidden: service not in scope' });
+        const entity = auth.entity || {};
+        const isOwner = entity?.registration?.isOwner === true;
+        if (!isOwner) {
+          for (const sid of payload.looking_for) {
+            const oid = parseObjectId(sid);
+            if (!oid) return res.status(400).json({ error: 'Invalid service in looking_for' });
+            const svc = await Service.findById(oid).select('user_id').lean();
+            if (!svc || String(svc.user_id) !== String(ownerScopeId)) {
+              return res.status(403).json({ error: 'Forbidden: service not in scope' });
+            }
           }
         }
       }
@@ -219,8 +229,9 @@ const LeadController = {
       let ownerScopeId = null;
       if (auth.type !== 'admin') {
         const entity = auth.entity || {};
+        const isOwner = entity?.registration?.isOwner === true;
         let allowed = false;
-        if (entity?.registration?.isOwner) {
+        if (isOwner) {
           ownerScopeId = auth.id;
           allowed = true;
         } else {
@@ -236,33 +247,37 @@ const LeadController = {
           ownerScopeId = tm.managed_by;
           allowed = true;
         }
-        // Scope check on current document
-        const allowedTeam = await TeamMember.find({ managed_by: ownerScopeId, status: 'active' }).select('_id').lean();
-        const allowedTeamIds = allowedTeam.map((t) => String(t._id));
-        let inScope = (current.assigned_to && allowedTeamIds.includes(String(current.assigned_to)));
-        if (!inScope) {
-          const services = await Service.find({ user_id: ownerScopeId }).select('_id').lean();
-          const allowedServiceIds = services.map((s) => String(s._id));
-          inScope = (current.looking_for || []).some((sid) => allowedServiceIds.includes(String(sid)));
+        // Scope check on current document (owners bypass)
+        if (!isOwner) {
+          const allowedTeam = await TeamMember.find({ managed_by: ownerScopeId, status: 'active' }).select('_id').lean();
+          const allowedTeamIds = allowedTeam.map((t) => String(t._id));
+          let inScope = (current.assigned_to && allowedTeamIds.includes(String(current.assigned_to)));
+          if (!inScope) {
+            const services = await Service.find({ user_id: ownerScopeId }).select('_id').lean();
+            const allowedServiceIds = services.map((s) => String(s._id));
+            inScope = (current.looking_for || []).some((sid) => allowedServiceIds.includes(String(sid)));
+          }
+          if (!inScope) return res.status(403).json({ error: 'Forbidden: lead not in scope' });
         }
-        if (!inScope) return res.status(403).json({ error: 'Forbidden: lead not in scope' });
 
         // Validate changes remain in scope
         if (payload.assigned_to) {
           const aid = parseObjectId(payload.assigned_to);
           if (!aid) return res.status(400).json({ error: 'Invalid assigned_to' });
           const assignedTm = await TeamMember.findById(aid).select('managed_by status').lean();
-          if (!assignedTm || String(assignedTm.managed_by) !== String(ownerScopeId) || assignedTm.status !== 'active') {
+          if (!isOwner && (!assignedTm || String(assignedTm.managed_by) !== String(ownerScopeId) || assignedTm.status !== 'active')) {
             return res.status(403).json({ error: 'Forbidden: assigned_to not in scope' });
           }
         }
         if (Array.isArray(payload.looking_for)) {
-          for (const sid of payload.looking_for) {
-            const oid = parseObjectId(sid);
-            if (!oid) return res.status(400).json({ error: 'Invalid service in looking_for' });
-            const svc = await Service.findById(oid).select('user_id').lean();
-            if (!svc || String(svc.user_id) !== String(ownerScopeId)) {
-              return res.status(403).json({ error: 'Forbidden: service not in scope' });
+          if (!isOwner) {
+            for (const sid of payload.looking_for) {
+              const oid = parseObjectId(sid);
+              if (!oid) return res.status(400).json({ error: 'Invalid service in looking_for' });
+              const svc = await Service.findById(oid).select('user_id').lean();
+              if (!svc || String(svc.user_id) !== String(ownerScopeId)) {
+                return res.status(403).json({ error: 'Forbidden: service not in scope' });
+              }
             }
           }
         }
@@ -292,9 +307,10 @@ const LeadController = {
       if (!current) return res.status(404).json({ error: 'Lead not found' });
       if (auth.type !== 'admin') {
         const entity = auth.entity || {};
+        const isOwner = entity?.registration?.isOwner === true;
         let ownerScopeId = null;
         let hasDelete = false;
-        if (entity?.registration?.isOwner) {
+        if (isOwner) {
           ownerScopeId = auth.id;
           hasDelete = true;
         } else {
@@ -309,15 +325,17 @@ const LeadController = {
           if (!hasDelete) return res.status(403).json({ error: 'Forbidden: missing delete_lead permission' });
           ownerScopeId = tm.managed_by;
         }
-        const allowedTeam = await TeamMember.find({ managed_by: ownerScopeId, status: 'active' }).select('_id').lean();
-        const allowedTeamIds = allowedTeam.map((t) => String(t._id));
-        let inScope = (current.assigned_to && allowedTeamIds.includes(String(current.assigned_to)));
-        if (!inScope) {
-          const services = await Service.find({ user_id: ownerScopeId }).select('_id').lean();
-          const allowedServiceIds = services.map((s) => String(s._id));
-          inScope = (current.looking_for || []).some((sid) => allowedServiceIds.includes(String(sid)));
+        if (!isOwner) {
+          const allowedTeam = await TeamMember.find({ managed_by: ownerScopeId, status: 'active' }).select('_id').lean();
+          const allowedTeamIds = allowedTeam.map((t) => String(t._id));
+          let inScope = (current.assigned_to && allowedTeamIds.includes(String(current.assigned_to)));
+          if (!inScope) {
+            const services = await Service.find({ user_id: ownerScopeId }).select('_id').lean();
+            const allowedServiceIds = services.map((s) => String(s._id));
+            inScope = (current.looking_for || []).some((sid) => allowedServiceIds.includes(String(sid)));
+          }
+          if (!inScope) return res.status(403).json({ error: 'Forbidden: lead not in scope' });
         }
-        if (!inScope) return res.status(403).json({ error: 'Forbidden: lead not in scope' });
       }
       const removed = await Lead.findByIdAndDelete(id).lean();
       if (!removed) return res.status(404).json({ error: 'Lead not found' });
