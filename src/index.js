@@ -36,6 +36,7 @@ import contentTypesRouter from './routes/contentTypes.js';
 import usersRouter from './routes/users.js';
 import authRouter from './routes/auth.js';
 import uploadsRouter from './routes/uploads.js';
+import emailRouter from './routes/email.js';
 import otpRouter from './routes/otp.js';
 
 // Environment variables (PORT, MONGO_URI, etc.) are initialized via side-effect import above
@@ -101,6 +102,7 @@ app.use('/api/content-types', contentTypesRouter);
 // Mount users CRUD under /api/users
 app.use('/api/users', usersRouter);
 app.use('/api/uploads', uploadsRouter);
+app.use('/api/email', emailRouter);
 // OTP endpoints (send, verify, resend)
 app.use('/api/otp', otpRouter);
 

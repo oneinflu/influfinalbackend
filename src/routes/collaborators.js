@@ -8,6 +8,9 @@ router.get('/', CollaboratorController.list);
 router.get('/:id', CollaboratorController.getById);
 router.post('/', CollaboratorController.create);
 router.put('/:id', CollaboratorController.update);
+router.put('/:id/profile-icon', CollaboratorController.updateProfileIcon);
+router.put('/:id/samples', CollaboratorController.updateSamples);
+router.put('/:id/role-profile', CollaboratorController.updateRoleProfile);
 router.delete('/:id', CollaboratorController.remove);
 
 export default router;
