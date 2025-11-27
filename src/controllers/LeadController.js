@@ -155,7 +155,8 @@ const LeadController = {
       let ownerScopeId = null;
       if (auth.type !== 'admin') {
         const entity = auth.entity || {};
-       
+        let allowed = false;
+        
         const isOwner = entity?.registration?.isOwner === true;
         if (isOwner) {
           ownerScopeId = new mongoose.Types.ObjectId(auth.id);
