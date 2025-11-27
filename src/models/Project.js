@@ -3,6 +3,16 @@
 
 import mongoose from 'mongoose';
 
+function isURL(value) {
+  if (!value) return true;
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const TargetSchema = new mongoose.Schema(
   {
     location: { type: [String], default: [] },
@@ -13,6 +23,36 @@ const TargetSchema = new mongoose.Schema(
     },
     age_groups: { type: [String], default: [] },
     languages: { type: [String], default: [] },
+  },
+  { _id: false }
+);
+
+const TaskSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true, trim: true },
+    description: { type: String, trim: true, maxlength: 2000 },
+    assigned_to: { type: mongoose.Schema.Types.ObjectId, ref: 'Collaborator' },
+    due_date: { type: Date },
+    status: { type: String, enum: ['todo', 'in_progress', 'done', 'blocked'], default: 'todo', index: true },
+  },
+  { _id: true }
+);
+
+const InternalCostSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    amount: { type: Number, required: true, min: 0 },
+    incurred_on: { type: Date },
+    notes: { type: String, trim: true, maxlength: 1000 },
+  },
+  { _id: true }
+);
+
+const DeliverySystemSchema = new mongoose.Schema(
+  {
+    method: { type: String, enum: ['drive', 'email', 'platform', 'courier', 'other'], default: 'drive' },
+    url: { type: String, trim: true, validate: [isURL, 'Invalid URL'] },
+    meta: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
   { _id: false }
 );
@@ -28,6 +68,15 @@ const ProjectSchema = new mongoose.Schema(
     services: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Service', default: [] }],
 
     testimonials: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Testimonial', default: [] }],
+
+    quotation_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Quotation', index: true },
+    final_confirmed_rate_cards: [{ type: mongoose.Schema.Types.ObjectId, ref: 'RateCard', default: [] }],
+    assigned_collaborators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Collaborator', default: [] }],
+    milestones: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Milestone', default: [] }],
+    tasks: { type: [TaskSchema], default: [] },
+    internal_costs: { type: [InternalCostSchema], default: [] },
+    invoices: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Invoice', default: [] }],
+    delivery_system: { type: DeliverySystemSchema, default: {} },
 
     completion_date: { type: Date, index: true },
     end_date: { type: Date, index: true },
@@ -100,6 +149,10 @@ ProjectSchema.pre('validate', function (next) {
   this.testimonials = dedupeObjectIds(this.testimonials);
   this.collaborators = dedupeObjectIds(this.collaborators);
   this.deliverables = dedupeObjectIds(this.deliverables);
+  this.final_confirmed_rate_cards = dedupeObjectIds(this.final_confirmed_rate_cards);
+  this.assigned_collaborators = dedupeObjectIds(this.assigned_collaborators);
+  this.milestones = dedupeObjectIds(this.milestones);
+  this.invoices = dedupeObjectIds(this.invoices);
 
   // Optional sanity check: ensure end_date is not before completion_date
   if (this.end_date && this.completion_date && this.end_date < this.completion_date) {
@@ -115,6 +168,11 @@ ProjectSchema.index({ project_category: 1 });
 ProjectSchema.index({ services: 1 });
 ProjectSchema.index({ collaborators: 1 });
 ProjectSchema.index({ deliverables: 1 });
+ProjectSchema.index({ quotation_id: 1 });
+ProjectSchema.index({ final_confirmed_rate_cards: 1 });
+ProjectSchema.index({ assigned_collaborators: 1 });
+ProjectSchema.index({ milestones: 1 });
+ProjectSchema.index({ invoices: 1 });
 ProjectSchema.index({ 'target.platforms': 1 });
 ProjectSchema.index({ name: 1, client: 1 }, { unique: true });
 
