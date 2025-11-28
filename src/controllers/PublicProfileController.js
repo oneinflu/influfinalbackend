@@ -2,6 +2,7 @@
 // Exposes: list, getById, create, update, remove
 
 import PublicProfile from '../models/PublicProfile.js';
+import User from '../models/User.js';
 import TeamMember from '../models/TeamMember.js';
 import Role from '../models/Role.js';
 import { getAuthFromRequest } from '../middleware/auth.js';
@@ -74,8 +75,15 @@ const PublicProfileController = {
       const { slug } = req.params;
       const value = String(slug || '').trim().toLowerCase();
       if (!value) return res.status(400).json({ error: 'Invalid slug' });
-      const doc = await PublicProfile.findOne({ slug: value }).lean();
-      if (!doc) return res.status(404).json({ error: 'PublicProfile not found' });
+      let doc = await PublicProfile.findOne({ slug: value }).lean();
+      if (!doc) {
+        const user = await User.findOne({ 'profile.slug': value }).select(['_id']).lean();
+        if (user) {
+          doc = await PublicProfile.findOne({ $or: [{ ownerRef: user._id }, { user_id: user._id }] }).lean();
+          if (doc) return res.json(doc);
+        }
+        return res.status(404).json({ error: 'PublicProfile not found' });
+      }
       return res.json(doc);
     } catch (err) {
       return res.status(500).json({ error: err.message });
