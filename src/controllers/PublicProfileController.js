@@ -6,7 +6,6 @@ import TeamMember from '../models/TeamMember.js';
 import Role from '../models/Role.js';
 import { getAuthFromRequest } from '../middleware/auth.js';
 import mongoose from 'mongoose';
-import { uploadImageBufferToCloudinary } from '../utils/cloudinary.js';
 
 function parseObjectId(id) {
   try {
@@ -17,36 +16,42 @@ function parseObjectId(id) {
 }
 
 const PublicProfileController = {
-  // List public profiles with filters and search
   async list(req, res) {
     try {
       const auth = await getAuthFromRequest(req);
       if (!auth || (auth.type !== 'admin' && auth.type !== 'user')) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
-      const {
-        user_id,
-        has_cover_photo,
-        min_rating,
-        max_rating,
-        has_stats,
-        featured_client,
-        showcase_media,
-        from,
-        to,
-        q,
-      } = req.query;
-
+      const { owner_type, owner_ref, visibility, is_published, from, to, q } = req.query;
       const filter = {};
-      // Scope by ownership for non-admins
+      if (owner_type) filter.ownerType = String(owner_type);
+      if (owner_ref) {
+        const oid = parseObjectId(owner_ref);
+        if (!oid) return res.status(400).json({ error: 'Invalid owner_ref' });
+        filter.ownerRef = oid;
+      }
+      if (visibility) filter.visibility = String(visibility);
+      if (is_published === 'true') filter.isPublished = true;
+      else if (is_published === 'false') filter.isPublished = false;
+      if (from || to) {
+        filter.createdAt = {};
+        if (from) filter.createdAt.$gte = new Date(from);
+        if (to) filter.createdAt.$lte = new Date(to);
+      }
+      if (q) {
+        filter.$or = [
+          { title: { $regex: q, $options: 'i' } },
+          { shortBio: { $regex: q, $options: 'i' } },
+          { slug: { $regex: q, $options: 'i' } },
+        ];
+      }
       if (auth.type !== 'admin') {
         const entity = auth.entity || {};
         if (entity?.registration?.isOwner) {
-          filter.user_id = parseObjectId(auth.id);
+          filter.ownerRef = parseObjectId(auth.id);
         } else {
           const email = entity?.registration?.email;
-          if (!email) return res.status(403).json({ error: 'Forbidden' });
-          const tm = await TeamMember.findOne({ email, status: 'active' }).select('role managed_by').lean();
+          const tm = email ? await TeamMember.findOne({ email, status: 'active' }).select('role managed_by').lean() : null;
           if (!tm || !tm.role || !tm.managed_by) return res.status(403).json({ error: 'Forbidden' });
           const assignedRole = await Role.findById(tm.role).select('permissions').lean();
           const hasView = assignedRole && assignedRole.permissions && (
@@ -54,71 +59,9 @@ const PublicProfileController = {
             assignedRole.permissions.view_profile === true
           );
           if (!hasView) return res.status(403).json({ error: 'Forbidden: missing view_profile permission' });
-          filter.user_id = parseObjectId(tm.managed_by);
+          filter.ownerRef = tm.managed_by;
         }
-        if (user_id) {
-          const oid = parseObjectId(user_id);
-          if (!oid) return res.status(400).json({ error: 'Invalid user_id' });
-          if (String(oid) !== String(filter.user_id)) {
-            return res.status(403).json({ error: 'Forbidden: user_id not in scope' });
-          }
-          filter.user_id = oid;
-        }
-      } else if (user_id) {
-        const oid = parseObjectId(user_id);
-        if (!oid) return res.status(400).json({ error: 'Invalid user_id' });
-        filter.user_id = oid;
       }
-
-      if (has_cover_photo === 'true') {
-        filter.cover_photo = { $exists: true, $ne: '' };
-      } else if (has_cover_photo === 'false') {
-        filter.cover_photo = { $in: [null, ''] };
-      }
-
-      const ratingCond = {};
-      if (min_rating !== undefined) {
-        const v = parseFloat(min_rating);
-        if (Number.isNaN(v)) return res.status(400).json({ error: 'Invalid min_rating' });
-        ratingCond.$gte = v;
-      }
-      if (max_rating !== undefined) {
-        const v = parseFloat(max_rating);
-        if (Number.isNaN(v)) return res.status(400).json({ error: 'Invalid max_rating' });
-        ratingCond.$lte = v;
-      }
-      if (Object.keys(ratingCond).length) {
-        filter['stats.avg_rating'] = ratingCond;
-      }
-
-      if (has_stats === 'true') {
-        filter['stats.0'] = { $exists: true };
-      } else if (has_stats === 'false') {
-        filter.stats = { $size: 0 };
-      }
-
-      if (featured_client) {
-        const oid = parseObjectId(featured_client);
-        if (!oid) return res.status(400).json({ error: 'Invalid featured_client' });
-        filter.featured_clients = oid;
-      }
-
-      if (showcase_media) {
-        const oid = parseObjectId(showcase_media);
-        if (!oid) return res.status(400).json({ error: 'Invalid showcase_media' });
-        filter.showcase_media = oid;
-      }
-
-      if (from || to) {
-        filter.created_on = {};
-        if (from) filter.created_on.$gte = new Date(from);
-        if (to) filter.created_on.$lte = new Date(to);
-      }
-
-      if (q) {
-        filter.bio = { $regex: q, $options: 'i' };
-      }
-
       const items = await PublicProfile.find(filter).lean();
       return res.json(items);
     } catch (err) {
@@ -126,83 +69,32 @@ const PublicProfileController = {
     }
   },
 
-  // Upload and set cover photo for the current user's public profile
-  async updateCoverPhoto(req, res) {
+  async getBySlug(req, res) {
     try {
-      const user = req.user;
-      const id = user?._id || user?.id;
-      if (!id) return res.status(401).json({ error: 'Unauthorized' });
-      if (!req.file || !req.file.buffer) {
-        return res.status(400).json({ error: 'cover file is required' });
-      }
-      // Upload to Cloudinary
-      let uploadResult;
-      try {
-        uploadResult = await uploadImageBufferToCloudinary(req.file.buffer, { folder: process.env.CLOUDINARY_FOLDER || 'covers' });
-      } catch (uploadErr) {
-        return res.status(400).json({ error: `Cover upload failed: ${uploadErr?.message || uploadErr}` });
-      }
-      if (!uploadResult?.secure_url) {
-        return res.status(400).json({ error: 'Upload failed' });
-      }
-      const coverUrl = uploadResult.secure_url;
-      // Find or create public profile for this user
-      const existing = await PublicProfile.findOne({ user_id: id }).select('_id').lean();
-      let saved;
-      if (existing && existing._id) {
-        saved = await PublicProfile.findByIdAndUpdate(existing._id, { $set: { cover_photo: coverUrl } }, { new: true }).lean();
-      } else {
-        const doc = new PublicProfile({ user_id: id, cover_photo: coverUrl, stats: [], featured_clients: [], showcase_media: [] });
-        await doc.validate();
-        saved = await doc.save();
-      }
-      return res.json({ cover_photo: saved?.cover_photo || coverUrl });
-    } catch (err) {
-      return res.status(500).json({ error: err.message });
-    }
-  },
-
-  // Get single public profile
-  async getById(req, res) {
-    try {
-      const auth = await getAuthFromRequest(req);
-      if (!auth || (auth.type !== 'admin' && auth.type !== 'user')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-      const { id } = req.params;
-      const oid = parseObjectId(id);
-      if (!oid) return res.status(400).json({ error: 'Invalid id' });
-      const doc = await PublicProfile.findById(oid).lean();
+      const { slug } = req.params;
+      const value = String(slug || '').trim().toLowerCase();
+      if (!value) return res.status(400).json({ error: 'Invalid slug' });
+      const doc = await PublicProfile.findOne({ slug: value }).lean();
       if (!doc) return res.status(404).json({ error: 'PublicProfile not found' });
-      if (auth.type !== 'admin') {
-        const entity = auth.entity || {};
-        if (entity?.registration?.isOwner) {
-          if (String(doc.user_id) !== String(auth.id)) {
-            return res.status(403).json({ error: 'Forbidden: profile not in owner scope' });
-          }
-        } else {
-          const email = entity?.registration?.email;
-          if (!email) return res.status(403).json({ error: 'Forbidden' });
-          const tm = await TeamMember.findOne({ email, status: 'active' }).select('role managed_by').lean();
-          if (!tm || !tm.role || !tm.managed_by) return res.status(403).json({ error: 'Forbidden' });
-          const assignedRole = await Role.findById(tm.role).select('permissions').lean();
-          const hasView = assignedRole && assignedRole.permissions && (
-            Object.values(assignedRole.permissions).some((g) => g && g.view_profile === true) ||
-            assignedRole.permissions.view_profile === true
-          );
-          if (!hasView) return res.status(403).json({ error: 'Forbidden: missing view_profile permission' });
-          if (String(doc.user_id) !== String(tm.managed_by)) {
-            return res.status(403).json({ error: 'Forbidden: profile not in team scope' });
-          }
-        }
-      }
       return res.json(doc);
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
   },
 
-  // Create public profile
+  async getById(req, res) {
+    try {
+      const { id } = req.params;
+      const oid = parseObjectId(id);
+      if (!oid) return res.status(400).json({ error: 'Invalid id' });
+      const doc = await PublicProfile.findById(oid).lean();
+      if (!doc) return res.status(404).json({ error: 'PublicProfile not found' });
+      return res.json(doc);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+
   async create(req, res) {
     try {
       const auth = await getAuthFromRequest(req);
@@ -210,15 +102,20 @@ const PublicProfileController = {
         return res.status(401).json({ error: 'Unauthorized' });
       }
       const payload = req.body || {};
-      if (!payload.user_id) return res.status(400).json({ error: 'user_id is required' });
-      const userOid = parseObjectId(payload.user_id);
-      if (!userOid) return res.status(400).json({ error: 'Invalid user_id' });
+      const ownerType = String(payload.ownerType || '').trim();
+      const ownerRef = parseObjectId(payload.ownerRef);
+      const slug = String(payload.slug || '').trim().toLowerCase();
+      if (!ownerType || !['user', 'collaborator', 'agency', 'influencer'].includes(ownerType)) {
+        return res.status(400).json({ error: 'Invalid ownerType' });
+      }
+      if (!ownerRef) return res.status(400).json({ error: 'Invalid ownerRef' });
+      if (!slug) return res.status(400).json({ error: 'slug is required' });
 
       if (auth.type !== 'admin') {
         const entity = auth.entity || {};
         let allowed = false;
         if (entity?.registration?.isOwner) {
-          allowed = String(userOid) === String(auth.id);
+          allowed = String(ownerRef) === String(auth.id);
         } else {
           const email = entity?.registration?.email;
           const tm = email ? await TeamMember.findOne({ email, status: 'active' }).select('role managed_by').lean() : null;
@@ -228,37 +125,59 @@ const PublicProfileController = {
               Object.values(assignedRole.permissions).some((g) => g && g.create_profile === true) ||
               assignedRole.permissions.create_profile === true
             );
-            allowed = !!hasCreate && String(userOid) === String(tm.managed_by);
+            allowed = !!hasCreate && String(ownerRef) === String(tm.managed_by);
           }
         }
-        if (!allowed) return res.status(403).json({ error: 'Forbidden: missing create_profile or wrong user scope' });
+        if (!allowed) return res.status(403).json({ error: 'Forbidden' });
       }
 
-      const exists = await PublicProfile.findOne({ user_id: userOid }).lean();
-      if (exists) return res.status(409).json({ error: 'PublicProfile already exists for this user' });
+      const dupeSlug = await PublicProfile.findOne({ slug }).select('_id').lean();
+      if (dupeSlug) return res.status(409).json({ error: 'Duplicate slug' });
 
       const doc = new PublicProfile({
-        user_id: userOid,
-        cover_photo: payload.cover_photo,
-        stats: Array.isArray(payload.stats) ? payload.stats : [],
-        featured_clients: Array.isArray(payload.featured_clients) ? payload.featured_clients : [],
-        bio: payload.bio,
-        showcase_media: Array.isArray(payload.showcase_media) ? payload.showcase_media : [],
+        ownerType,
+        ownerRef,
+        slug,
+        visibility: String(payload.visibility || 'public'),
+        mode: String(payload.mode || 'live'),
+        title: payload.title ?? null,
+        shortBio: payload.shortBio ?? null,
+        heroImage: payload.heroImage ?? null,
+        coverImage: payload.coverImage ?? null,
+        location: payload.location ?? null,
+        skills: Array.isArray(payload.skills) ? payload.skills : [],
+        topServices: Array.isArray(payload.topServices) ? payload.topServices : [],
+        portfolio: Array.isArray(payload.portfolio) ? payload.portfolio : [],
+        gallery: Array.isArray(payload.gallery) ? payload.gallery : [],
+        allowContact: payload.allowContact !== undefined ? !!payload.allowContact : true,
+        showEmail: !!payload.showEmail,
+        showPhone: !!payload.showPhone,
+        contactEmail: payload.contactEmail ?? null,
+        contactPhone: payload.contactPhone ?? null,
+        ctas: Array.isArray(payload.ctas) ? payload.ctas : [],
+        seo: payload.seo || {},
+        customDomain: payload.customDomain ?? null,
+        isPublished: !!payload.isPublished,
+        publishedAt: payload.isPublished ? new Date() : null,
+        expiresAt: payload.expiresAt ?? null,
+        allowEmbed: !!payload.allowEmbed,
+        embedCode: payload.embedCode ?? null,
+        analytics: {},
+        shareCount: 0,
+        tags: Array.isArray(payload.tags) ? payload.tags : [],
+        notes: payload.notes ?? null,
+        meta: payload.meta || {},
+        createdBy: auth.type === 'admin' ? new mongoose.Types.ObjectId(auth.id) : new mongoose.Types.ObjectId(auth.id),
+        updatedBy: null,
       });
-
       await doc.validate();
       const saved = await doc.save();
       return res.status(201).json(saved);
     } catch (err) {
-      // Handle duplicate key error explicitly
-      if (err && err.code === 11000) {
-        return res.status(409).json({ error: 'Duplicate key: user_id must be unique' });
-      }
       return res.status(400).json({ error: err.message });
     }
   },
 
-  // Update public profile
   async update(req, res) {
     try {
       const auth = await getAuthFromRequest(req);
@@ -268,18 +187,13 @@ const PublicProfileController = {
       const { id } = req.params;
       const oid = parseObjectId(id);
       if (!oid) return res.status(400).json({ error: 'Invalid id' });
-
-      const payload = req.body || {};
-
-      // Ensure current document exists and is within scope
-      const current = await PublicProfile.findById(oid).select('user_id').lean();
+      const current = await PublicProfile.findById(oid).select(['ownerRef']).lean();
       if (!current) return res.status(404).json({ error: 'PublicProfile not found' });
-
       if (auth.type !== 'admin') {
         const entity = auth.entity || {};
         let allowed = false;
         if (entity?.registration?.isOwner) {
-          allowed = String(current.user_id) === String(auth.id);
+          allowed = String(current.ownerRef) === String(auth.id);
         } else {
           const email = entity?.registration?.email;
           const tm = email ? await TeamMember.findOne({ email, status: 'active' }).select('role managed_by').lean() : null;
@@ -289,39 +203,47 @@ const PublicProfileController = {
               Object.values(assignedRole.permissions).some((g) => g && g.update_profile === true) ||
               assignedRole.permissions.update_profile === true
             );
-            allowed = !!hasUpdate && String(current.user_id) === String(tm.managed_by);
+            allowed = !!hasUpdate && String(current.ownerRef) === String(tm.managed_by);
           }
         }
-        if (!allowed) return res.status(403).json({ error: 'Forbidden: missing update_profile or wrong user scope' });
+        if (!allowed) return res.status(403).json({ error: 'Forbidden' });
       }
-
-      if (payload.user_id) {
-        const nextUserOid = parseObjectId(payload.user_id);
-        if (!nextUserOid) return res.status(400).json({ error: 'Invalid user_id' });
-        const dup = await PublicProfile.findOne({ _id: { $ne: oid }, user_id: nextUserOid }).lean();
-        if (dup) return res.status(409).json({ error: 'Another PublicProfile already exists for this user' });
-        // Prevent moving to another owner/team out of scope
-        if (auth.type !== 'admin') {
-          const entity = auth.entity || {};
-          if (entity?.registration?.isOwner) {
-            if (String(nextUserOid) !== String(auth.id)) {
-              return res.status(403).json({ error: 'Forbidden: cannot move profile to another owner' });
-            }
-          } else {
-            const email = entity?.registration?.email;
-            const tm = email ? await TeamMember.findOne({ email, status: 'active' }).select('managed_by').lean() : null;
-            if (!tm || String(nextUserOid) !== String(tm.managed_by)) {
-              return res.status(403).json({ error: 'Forbidden: cannot move profile outside team scope' });
-            }
-          }
-        }
+      const payload = req.body || {};
+      const update = {};
+      if (payload.slug) {
+        const nextSlug = String(payload.slug).trim().toLowerCase();
+        if (!nextSlug) return res.status(400).json({ error: 'Invalid slug' });
+        const dupe = await PublicProfile.findOne({ _id: { $ne: oid }, slug: nextSlug }).select('_id').lean();
+        if (dupe) return res.status(409).json({ error: 'Duplicate slug' });
+        update.slug = nextSlug;
       }
-
-      const updated = await PublicProfile.findByIdAndUpdate(
-        oid,
-        { $set: payload },
-        { new: true, runValidators: true }
-      ).lean();
+      if (payload.visibility) update.visibility = String(payload.visibility);
+      if (payload.mode) update.mode = String(payload.mode);
+      if (payload.title !== undefined) update.title = payload.title ?? null;
+      if (payload.shortBio !== undefined) update.shortBio = payload.shortBio ?? null;
+      if (payload.heroImage !== undefined) update.heroImage = payload.heroImage ?? null;
+      if (payload.coverImage !== undefined) update.coverImage = payload.coverImage ?? null;
+      if (payload.location !== undefined) update.location = payload.location ?? null;
+      if (Array.isArray(payload.skills)) update.skills = payload.skills;
+      if (Array.isArray(payload.topServices)) update.topServices = payload.topServices;
+      if (Array.isArray(payload.portfolio)) update.portfolio = payload.portfolio;
+      if (Array.isArray(payload.gallery)) update.gallery = payload.gallery;
+      if (payload.allowContact !== undefined) update.allowContact = !!payload.allowContact;
+      if (payload.showEmail !== undefined) update.showEmail = !!payload.showEmail;
+      if (payload.showPhone !== undefined) update.showPhone = !!payload.showPhone;
+      if (payload.contactEmail !== undefined) update.contactEmail = payload.contactEmail ?? null;
+      if (payload.contactPhone !== undefined) update.contactPhone = payload.contactPhone ?? null;
+      if (Array.isArray(payload.ctas)) update.ctas = payload.ctas;
+      if (payload.seo !== undefined) update.seo = payload.seo || {};
+      if (payload.customDomain !== undefined) update.customDomain = payload.customDomain ?? null;
+      if (payload.expiresAt !== undefined) update.expiresAt = payload.expiresAt ?? null;
+      if (payload.allowEmbed !== undefined) update.allowEmbed = !!payload.allowEmbed;
+      if (payload.embedCode !== undefined) update.embedCode = payload.embedCode ?? null;
+      if (payload.tags !== undefined) update.tags = Array.isArray(payload.tags) ? payload.tags : [];
+      if (payload.notes !== undefined) update.notes = payload.notes ?? null;
+      if (payload.meta !== undefined) update.meta = payload.meta || {};
+      update.updatedBy = new mongoose.Types.ObjectId(auth.id);
+      const updated = await PublicProfile.findByIdAndUpdate(oid, { $set: update }, { new: true, runValidators: true }).lean();
       if (!updated) return res.status(404).json({ error: 'PublicProfile not found' });
       return res.json(updated);
     } catch (err) {
@@ -329,7 +251,6 @@ const PublicProfileController = {
     }
   },
 
-  // Delete public profile
   async remove(req, res) {
     try {
       const auth = await getAuthFromRequest(req);
@@ -339,13 +260,13 @@ const PublicProfileController = {
       const { id } = req.params;
       const oid = parseObjectId(id);
       if (!oid) return res.status(400).json({ error: 'Invalid id' });
-      const current = await PublicProfile.findById(oid).select('user_id').lean();
+      const current = await PublicProfile.findById(oid).select(['ownerRef']).lean();
       if (!current) return res.status(404).json({ error: 'PublicProfile not found' });
       if (auth.type !== 'admin') {
         const entity = auth.entity || {};
         let allowed = false;
         if (entity?.registration?.isOwner) {
-          allowed = String(current.user_id) === String(auth.id);
+          allowed = String(current.ownerRef) === String(auth.id);
         } else {
           const email = entity?.registration?.email;
           const tm = email ? await TeamMember.findOne({ email, status: 'active' }).select('role managed_by').lean() : null;
@@ -355,14 +276,103 @@ const PublicProfileController = {
               Object.values(assignedRole.permissions).some((g) => g && g.delete_profile === true) ||
               assignedRole.permissions.delete_profile === true
             );
-            allowed = !!hasDelete && String(current.user_id) === String(tm.managed_by);
+            allowed = !!hasDelete && String(current.ownerRef) === String(tm.managed_by);
           }
         }
-        if (!allowed) return res.status(403).json({ error: 'Forbidden: missing delete_profile or wrong user scope' });
+        if (!allowed) return res.status(403).json({ error: 'Forbidden' });
       }
 
       const removed = await PublicProfile.findByIdAndDelete(oid).lean();
       if (!removed) return res.status(404).json({ error: 'PublicProfile not found' });
+      return res.json({ ok: true });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  },
+
+  async publish(req, res) {
+    try {
+      const auth = await getAuthFromRequest(req);
+      if (!auth || (auth.type !== 'admin' && auth.type !== 'user')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      const { id } = req.params;
+      const oid = parseObjectId(id);
+      if (!oid) return res.status(400).json({ error: 'Invalid id' });
+      const current = await PublicProfile.findById(oid).select(['ownerRef']).lean();
+      if (!current) return res.status(404).json({ error: 'PublicProfile not found' });
+      if (auth.type !== 'admin') {
+        const entity = auth.entity || {};
+        let allowed = false;
+        if (entity?.registration?.isOwner) {
+          allowed = String(current.ownerRef) === String(auth.id);
+        } else {
+          const email = entity?.registration?.email;
+          const tm = email ? await TeamMember.findOne({ email, status: 'active' }).select('role managed_by').lean() : null;
+          if (tm && tm.role && tm.managed_by) {
+            const assignedRole = await Role.findById(tm.role).select('permissions').lean();
+            const hasUpdate = assignedRole && assignedRole.permissions && (
+              Object.values(assignedRole.permissions).some((g) => g && g.update_profile === true) ||
+              assignedRole.permissions.update_profile === true
+            );
+            allowed = !!hasUpdate && String(current.ownerRef) === String(tm.managed_by);
+          }
+        }
+        if (!allowed) return res.status(403).json({ error: 'Forbidden' });
+      }
+      const updated = await PublicProfile.findByIdAndUpdate(oid, { $set: { isPublished: true, publishedAt: new Date() } }, { new: true }).lean();
+      return res.json(updated);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  },
+
+  async unpublish(req, res) {
+    try {
+      const auth = await getAuthFromRequest(req);
+      if (!auth || (auth.type !== 'admin' && auth.type !== 'user')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      const { id } = req.params;
+      const oid = parseObjectId(id);
+      if (!oid) return res.status(400).json({ error: 'Invalid id' });
+      const current = await PublicProfile.findById(oid).select(['ownerRef']).lean();
+      if (!current) return res.status(404).json({ error: 'PublicProfile not found' });
+      if (auth.type !== 'admin') {
+        const entity = auth.entity || {};
+        let allowed = false;
+        if (entity?.registration?.isOwner) {
+          allowed = String(current.ownerRef) === String(auth.id);
+        } else {
+          const email = entity?.registration?.email;
+          const tm = email ? await TeamMember.findOne({ email, status: 'active' }).select('role managed_by').lean() : null;
+          if (tm && tm.role && tm.managed_by) {
+            const assignedRole = await Role.findById(tm.role).select('permissions').lean();
+            const hasUpdate = assignedRole && assignedRole.permissions && (
+              Object.values(assignedRole.permissions).some((g) => g && g.update_profile === true) ||
+              assignedRole.permissions.update_profile === true
+            );
+            allowed = !!hasUpdate && String(current.ownerRef) === String(tm.managed_by);
+          }
+        }
+        if (!allowed) return res.status(403).json({ error: 'Forbidden' });
+      }
+      const updated = await PublicProfile.findByIdAndUpdate(oid, { $set: { isPublished: false, publishedAt: null } }, { new: true }).lean();
+      return res.json(updated);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  },
+
+  async incrementView(req, res) {
+    try {
+      const { id } = req.params;
+      const oid = parseObjectId(id);
+      if (!oid) return res.status(400).json({ error: 'Invalid id' });
+      const { referrer } = req.body || {};
+      const doc = await PublicProfile.findById(oid);
+      if (!doc) return res.status(404).json({ error: 'PublicProfile not found' });
+      await doc.incrementView({ referrer });
       return res.json({ ok: true });
     } catch (err) {
       return res.status(400).json({ error: err.message });
