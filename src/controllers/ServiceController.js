@@ -49,6 +49,23 @@ const ServiceController = {
     }
   },
 
+  async getByUserId(req, res) {
+    try {
+      const auth = await getAuthFromRequest(req);
+      if (!auth || (auth.type !== 'admin' && auth.type !== 'user')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      const { userId } = req.params;
+      let oid;
+      try { oid = new (await import('mongoose')).default.Types.ObjectId(userId); } catch { oid = null; }
+      if (!oid) return res.status(400).json({ error: 'Invalid userId' });
+      const items = await Service.find({ user_id: oid }).lean();
+      return res.json(items);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+
   async create(req, res) {
     try {
       const auth = await getAuthFromRequest(req);

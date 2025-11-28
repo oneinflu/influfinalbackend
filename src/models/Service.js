@@ -9,6 +9,8 @@ const ServiceSchema = new mongoose.Schema(
     defaultDeliverables: { type: [String], default: [] },
     tags: { type: [String], default: [] },
     isActive: { type: Boolean, default: true },
+    user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
+    status: { type: String, enum: ['active','inactive'], default: 'active', index: true },
   },
   {
     timestamps: true,
@@ -41,6 +43,12 @@ ServiceSchema.pre('validate', function (next) {
   if (typeof this.unit === 'string') this.unit = this.unit.trim();
   this.defaultDeliverables = dedupeStrings(this.defaultDeliverables);
   this.tags = dedupeStrings(this.tags);
+  if (typeof this.isActive === 'boolean') {
+    this.status = this.isActive ? 'active' : 'inactive';
+  }
+  if (typeof this.status === 'string') {
+    this.isActive = this.status === 'active';
+  }
   next();
 });
 
@@ -49,6 +57,7 @@ ServiceSchema.index(
   { unique: true, partialFilterExpression: { name: { $type: 'string' }, category: { $type: 'string' } } }
 );
 ServiceSchema.index({ category: 1 });
+ServiceSchema.index({ user_id: 1 });
 
 const Service = mongoose.model('Service', ServiceSchema);
 export default Service;
