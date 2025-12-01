@@ -14,6 +14,24 @@ function parseObjectId(id) {
   }
 }
 
+function sanitizePublicProfile(doc) {
+  if (!doc) return null;
+  return {
+    ownerRef: doc.ownerRef,
+    slug: doc.slug,
+    isPublished: doc.isPublished,
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+    profile: doc.profile || {},
+    servicesSection: doc.servicesSection || {},
+    portfolioSection: doc.portfolioSection || {},
+    collaboratorsSection: doc.collaboratorsSection || {},
+    brandsSection: doc.brandsSection || {},
+    ctaSection: doc.ctaSection || {},
+    linksSection: doc.linksSection || {},
+  };
+}
+
 const PublicProfileController = {
   async list(req, res) {
     try {
@@ -38,7 +56,7 @@ const PublicProfileController = {
       }
       if (q) filter.slug = { $regex: q, $options: 'i' };
       const items = await PublicProfile.find(filter).lean();
-      return res.json(items);
+      return res.json(items.map(sanitizePublicProfile));
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -51,7 +69,7 @@ const PublicProfileController = {
       if (!value) return res.status(400).json({ error: 'Invalid slug' });
       const doc = await PublicProfile.findOne({ slug: value }).lean();
       if (!doc) return res.status(404).json({ error: 'PublicProfile not found' });
-      return res.json(doc);
+      return res.json(sanitizePublicProfile(doc));
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -64,7 +82,7 @@ const PublicProfileController = {
       if (!oid) return res.status(400).json({ error: 'Invalid id' });
       const doc = await PublicProfile.findById(oid).lean();
       if (!doc) return res.status(404).json({ error: 'PublicProfile not found' });
-      return res.json(doc);
+      return res.json(sanitizePublicProfile(doc));
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -104,7 +122,8 @@ const PublicProfileController = {
       });
       await doc.validate();
       const saved = await doc.save();
-      return res.status(201).json(saved);
+      const obj = saved && typeof saved.toObject === 'function' ? saved.toObject() : saved;
+      return res.status(201).json(sanitizePublicProfile(obj));
     } catch (err) {
       return res.status(400).json({ error: err.message });
     }
@@ -144,7 +163,7 @@ const PublicProfileController = {
       update.updatedBy = new mongoose.Types.ObjectId(auth.id);
       const updated = await PublicProfile.findByIdAndUpdate(oid, { $set: update }, { new: true, runValidators: true }).lean();
       if (!updated) return res.status(404).json({ error: 'PublicProfile not found' });
-      return res.json(updated);
+      return res.json(sanitizePublicProfile(updated));
     } catch (err) {
       return res.status(400).json({ error: err.message });
     }
@@ -220,7 +239,7 @@ const PublicProfileController = {
         if (!allowed) return res.status(403).json({ error: 'Forbidden' });
       }
       const updated = await PublicProfile.findByIdAndUpdate(oid, { $set: { isPublished: true, publishedAt: new Date() } }, { new: true }).lean();
-      return res.json(updated);
+      return res.json(sanitizePublicProfile(updated));
     } catch (err) {
       return res.status(400).json({ error: err.message });
     }
@@ -257,7 +276,7 @@ const PublicProfileController = {
         if (!allowed) return res.status(403).json({ error: 'Forbidden' });
       }
       const updated = await PublicProfile.findByIdAndUpdate(oid, { $set: { isPublished: false, publishedAt: null } }, { new: true }).lean();
-      return res.json(updated);
+      return res.json(sanitizePublicProfile(updated));
     } catch (err) {
       return res.status(400).json({ error: err.message });
     }
