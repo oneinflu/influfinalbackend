@@ -3,140 +3,127 @@
 
 import mongoose from 'mongoose';
 
-const { Schema } = mongoose;
+function isURL(value) {
+  if (!value) return true;
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-const CTAButtonSchema = new Schema(
+const SocialHandleSchema = new mongoose.Schema(
   {
-    label: { type: String, required: true },
-    type: { type: String, enum: ['link', 'mailto', 'tel', 'modal', 'leadform'], default: 'link' },
-    value: { type: String, required: true },
-    showWhen: { type: String, enum: ['always', 'on_mobile', 'on_desktop'], default: 'always' },
+    platform: { type: String, required: true, trim: true },
+    url: { type: String, required: true, trim: true, validate: [isURL, 'Invalid URL'] },
   },
-  { _id: false }
+  { _id: true }
 );
 
-const ShareAnalyticsSchema = new Schema(
+const DisplayServiceSchema = new mongoose.Schema(
   {
-    views: { type: Number, default: 0 },
-    uniqueVisitors: { type: Number, default: 0 },
-    lastViewedAt: { type: Date, default: null },
-    referrers: { type: [String], default: [] },
+    service_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Service', required: true },
+    description: { type: String, default: null },
+    starting_price: { type: Number, default: 0, min: 0 },
+    show_price: { type: Boolean, default: true },
   },
-  { _id: false }
+  { _id: true }
 );
 
-const LegacyStatsSchema = new Schema(
+const PublicProfileSchema = new mongoose.Schema(
   {
-    clients: { type: Number, min: 0, default: 0 },
-    team_members: { type: Number, min: 0, default: 0 },
-    projects: { type: Number, min: 0, default: 0 },
-    years_in_business: { type: String, trim: true, default: '' },
-    avg_rating: { type: Number, min: 0, max: 5, default: 0 },
-  },
-  { _id: false }
-);
+    ownerRef: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    slug: { type: String, required: true, trim: true, lowercase: true, unique: true, index: true },
 
-const PublicProfileSchema = new Schema(
-  {
-    ownerType: { type: String, required: true, enum: ['user', 'collaborator', 'agency', 'influencer'] },
-    ownerRef: { type: Schema.Types.ObjectId, required: true },
-
-    slug: { type: String, required: true },
-    token: { type: String, default: null },
-
-    visibility: { type: String, enum: ['public', 'unlisted', 'password_protected', 'private'], default: 'public' },
-    passwordHash: { type: String, default: null },
-
-    mode: { type: String, enum: ['live', 'snapshot'], default: 'live' },
-
-    title: { type: String, default: null },
-    shortBio: { type: String, default: null },
-    heroImage: { type: String, default: null },
-    coverImage: { type: String, default: null },
-    location: { type: String, default: null },
-    skills: { type: [String], default: [] },
-    topServices: [
+    profile: new mongoose.Schema(
       {
-        serviceId: { type: Schema.Types.ObjectId, ref: 'Service', default: null },
-        serviceName: { type: String, default: null },
-        rateCardRef: { type: Schema.Types.ObjectId, ref: 'RateCard', default: null },
-        price: { type: Number, default: 0 },
+        shortBio: { type: String, default: '' },
+        title: { type: String, default: '' },
+        subtitle: { type: String, default: '' },
+        role: { type: String, default: '' },
+        locationAddress: { type: String, default: '' },
+        websiteUrl: { type: String, default: '', trim: true, validate: [isURL, 'Invalid URL'] },
+        socialHandles: { type: [SocialHandleSchema], default: [] },
+        ctaPhoneEnabled: { type: Boolean, default: false },
+        ctaPhoneLabel: { type: String, default: '' },
+        ctaPhoneNumber: { type: String, default: '' },
+        ctaEmailEnabled: { type: Boolean, default: false },
+        ctaEmailLabel: { type: String, default: '' },
+        ctaEmailAddress: { type: String, default: '' },
       },
-    ],
+      { _id: false }
+    ),
 
-    portfolio: { type: [String], default: [] },
-    gallery: { type: [String], default: [] },
+    servicesSection: new mongoose.Schema(
+      {
+        services_section_enabled: { type: Boolean, default: true },
+        services_section_title: { type: String, default: '' },
+        services_section_subtitle: { type: String, default: '' },
+        display_services: { type: [DisplayServiceSchema], default: [] },
+        published_services: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Service', default: [] }],
+      },
+      { _id: false }
+    ),
 
-    allowContact: { type: Boolean, default: true },
-    showEmail: { type: Boolean, default: false },
-    showPhone: { type: Boolean, default: false },
-    contactEmail: { type: String, default: null },
-    contactPhone: { type: String, default: null },
+    portfolioSection: new mongoose.Schema(
+      {
+        portfolio_section_enabled: { type: Boolean, default: true },
+        portfolio_section_title: { type: String, default: '' },
+        portfolio_section_subtitle: { type: String, default: '' },
+        showcase_media: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Portfolio', default: [] }],
+      },
+      { _id: false }
+    ),
 
-    ctas: { type: [CTAButtonSchema], default: [] },
+    collaboratorsSection: new mongoose.Schema(
+      {
+        collaborators_section_enabled: { type: Boolean, default: true },
+        collaborators_section_title: { type: String, default: '' },
+        collaborators_section_subtitle: { type: String, default: '' },
+        published_collaborators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Collaborator', default: [] }],
+      },
+      { _id: false }
+    ),
 
-    seo: {
-      metaTitle: { type: String, default: null },
-      metaDescription: { type: String, default: null },
-      ogImage: { type: String, default: null },
-      canonicalUrl: { type: String, default: null },
-    },
+    brandsSection: new mongoose.Schema(
+      {
+        brands_section_enabled: { type: Boolean, default: true },
+        brands_section_title: { type: String, default: '' },
+        brands_section_subtitle: { type: String, default: '' },
+        brand_images: [{ type: String, default: [], validate: [isURL, 'Invalid URL'] }],
+      },
+      { _id: false }
+    ),
 
-    customDomain: { type: String, default: null },
+    ctaSection: new mongoose.Schema(
+      {
+        cta_section_enabled: { type: Boolean, default: true },
+        cta_section_title: { type: String, default: '' },
+        cta_section_subtext: { type: String, default: '' },
+        cta_button_label: { type: String, default: '' },
+      },
+      { _id: false }
+    ),
 
-    isPublished: { type: Boolean, default: false },
-    publishedAt: { type: Date, default: null },
-    expiresAt: { type: Date, default: null },
+    linksSection: new mongoose.Schema(
+      {
+        terms_enabled: { type: Boolean, default: true },
+        privacy_enabled: { type: Boolean, default: true },
+        terms_text: { type: String, default: '' },
+        privacy_text: { type: String, default: '' },
+      },
+      { _id: false }
+    ),
 
-    allowEmbed: { type: Boolean, default: false },
-    embedCode: { type: String, default: null },
-
-    analytics: { type: ShareAnalyticsSchema, default: () => ({}) },
-    shareCount: { type: Number, default: 0 },
-
-    tags: { type: [String], default: [] },
-    notes: { type: String, default: null },
-    meta: { type: Schema.Types.Mixed, default: {} },
-
-    createdBy: { type: Schema.Types.ObjectId, required: true },
-    updatedBy: { type: Schema.Types.ObjectId, default: null },
-
-    user_id: { type: Schema.Types.ObjectId, ref: 'User', index: true, sparse: true },
-    cover_photo: { type: String, trim: true, default: null },
-    stats: { type: [LegacyStatsSchema], default: [] },
-    featured_clients: [{ type: Schema.Types.ObjectId, ref: 'Client', default: [] }],
-    published_services: [{ type: Schema.Types.ObjectId, ref: 'Service', default: [] }],
-    published_projects: [{ type: Schema.Types.ObjectId, ref: 'Project', default: [] }],
-    bio: { type: String, trim: true, default: null },
-    showcase_media: [{ type: Schema.Types.ObjectId, ref: 'Portfolio', default: [] }],
+    isPublished: { type: Boolean, default: true },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true, versionKey: false }
 );
 
-PublicProfileSchema.index(
-  { slug: 1 },
-  { unique: true, partialFilterExpression: { slug: { $exists: true } } }
-);
-PublicProfileSchema.index({ ownerType: 1, ownerRef: 1 });
-PublicProfileSchema.index({ visibility: 1, isPublished: 1 });
-PublicProfileSchema.index({ publishedAt: 1, expiresAt: 1 });
-
-PublicProfileSchema.pre('validate', function (next) {
-  if (this.slug) {
-    this.slug = String(this.slug).trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
-  }
-  next();
-});
-
-PublicProfileSchema.methods.incrementView = async function ({ referrer } = {}) {
-  this.analytics.views = (this.analytics.views || 0) + 1;
-  this.analytics.lastViewedAt = new Date();
-  if (referrer) {
-    this.analytics.referrers = (this.analytics.referrers || []).slice(0, 9);
-    this.analytics.referrers.unshift(referrer);
-  }
-  await this.save();
-};
+PublicProfileSchema.index({ ownerRef: 1, slug: 1 }, { unique: true });
 
 const PublicProfile = mongoose.model('PublicProfile', PublicProfileSchema);
 export default PublicProfile;
