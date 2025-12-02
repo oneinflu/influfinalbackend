@@ -69,7 +69,17 @@ const PublicProfileController = {
       const { slug } = req.params;
       const value = String(slug || '').trim().toLowerCase();
       if (!value) return res.status(400).json({ error: 'Invalid slug' });
-      const doc = await PublicProfile.findOne({ slug: value }).lean();
+      const doc = await PublicProfile.findOne({ slug: value })
+        .populate([
+          { path: 'ownerRef' },
+          { path: 'servicesSection.display_services.service_id' },
+          { path: 'servicesSection.published_services' },
+          { path: 'portfolioSection.showcase_media' },
+          { path: 'collaboratorsSection.published_collaborators' },
+          { path: 'createdBy' },
+          { path: 'updatedBy' },
+        ])
+        .lean();
       if (!doc) return res.status(404).json({ error: 'PublicProfile not found' });
       return res.json(sanitizePublicProfile(doc));
     } catch (err) {
