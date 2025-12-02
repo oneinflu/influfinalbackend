@@ -2,6 +2,7 @@
 // Exposes: list, getById, create, update, remove
 
 import User from '../models/User.js';
+import PublicProfile from '../models/PublicProfile.js';
 import TeamMember from '../models/TeamMember.js';
 import Role from '../models/Role.js';
 import { ensureOwnerRolesSeeded } from '../utils/roleSeeding.js';
@@ -179,6 +180,36 @@ const UserController = {
           // Do not block owner creation due to team member errors; surface as warning
           // Optional: console.warn(tmErr);
         }
+
+        let slug = saved?.profile?.slug;
+        if (!slug) {
+          const base = saved?.registration?.name || saved?.registration?.email || 'user';
+          slug = await User.generateUniqueSlug(base);
+          try {
+            await User.findByIdAndUpdate(saved._id, { $set: { 'profile.slug': slug } }, { new: true, runValidators: true }).lean();
+          } catch {}
+        }
+        try {
+          const existingProfile = await PublicProfile.findOne({ ownerRef: saved._id }).select('_id').lean();
+          if (!existingProfile) {
+            const pp = new PublicProfile({
+              ownerRef: saved._id,
+              slug,
+              profile: {},
+              servicesSection: {},
+              portfolioSection: {},
+              collaboratorsSection: {},
+              brandsSection: {},
+              ctaSection: {},
+              linksSection: {},
+              isPublished: true,
+              createdBy: saved._id,
+              updatedBy: null,
+            });
+            await pp.validate();
+            await pp.save();
+          }
+        } catch {}
       }
       // Ensure Bunny folder exists for this user (best-effort)
       try {
