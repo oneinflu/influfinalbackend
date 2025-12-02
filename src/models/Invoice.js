@@ -153,7 +153,6 @@ InvoiceSchema.pre('validate', function (next) {
 });
 
 // Indexes
-InvoiceSchema.index({ invoiceNo: 1 }, { unique: true });
 InvoiceSchema.index({ clientId: 1 });
 InvoiceSchema.index({ projectId: 1 });
 InvoiceSchema.index({ status: 1, dueDate: 1 });

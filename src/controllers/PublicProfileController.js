@@ -3,6 +3,8 @@
 
 import PublicProfile from '../models/PublicProfile.js';
 import User from '../models/User.js';
+import TeamMember from '../models/TeamMember.js';
+import Role from '../models/Role.js';
 import { getAuthFromRequest } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 
@@ -132,16 +134,33 @@ const PublicProfileController = {
   async update(req, res) {
     try {
       const auth = await getAuthFromRequest(req);
-      if (!auth || (auth.type !== 'admin' && !(auth.type === 'user' && auth.entity?.registration?.isOwner))) {
-        return res.status(403).json({ error: 'Forbidden' });
+      if (!auth || (auth.type !== 'admin' && auth.type !== 'user')) {
+        return res.status(401).json({ error: 'Unauthorized' });
       }
       const { id } = req.params;
       const oid = parseObjectId(id);
       if (!oid) return res.status(400).json({ error: 'Invalid id' });
       const current = await PublicProfile.findById(oid).select(['ownerRef']).lean();
       if (!current) return res.status(404).json({ error: 'PublicProfile not found' });
-      if (auth.type !== 'admin' && String(current.ownerRef) !== String(auth.id)) {
-        return res.status(403).json({ error: 'Forbidden' });
+
+      if (auth.type !== 'admin') {
+        const entity = auth.entity || {};
+        let allowed = false;
+        if (entity?.registration?.isOwner) {
+          allowed = String(current.ownerRef) === String(auth.id);
+        } else {
+          const email = entity?.registration?.email;
+          const tm = email ? await TeamMember.findOne({ email, status: 'active' }).select('role managed_by').lean() : null;
+          if (tm && tm.role && tm.managed_by) {
+            const assignedRole = await Role.findById(tm.role).select('permissions').lean();
+            const hasUpdate = assignedRole && assignedRole.permissions && (
+              Object.values(assignedRole.permissions).some((g) => g && g.update_profile === true) ||
+              assignedRole.permissions.update_profile === true
+            );
+            allowed = !!hasUpdate && String(current.ownerRef) === String(tm.managed_by);
+          }
+        }
+        if (!allowed) return res.status(403).json({ error: 'Forbidden' });
       }
       const payload = req.body || {};
       const update = {};

@@ -57,7 +57,6 @@ ServiceSchema.index(
   { unique: true, partialFilterExpression: { name: { $type: 'string' }, category: { $type: 'string' } } }
 );
 ServiceSchema.index({ category: 1 });
-ServiceSchema.index({ user_id: 1 });
 
 const Service = mongoose.model('Service', ServiceSchema);
 export default Service;

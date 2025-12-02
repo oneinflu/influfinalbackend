@@ -168,7 +168,6 @@ ProjectSchema.index({ project_category: 1 });
 ProjectSchema.index({ services: 1 });
 ProjectSchema.index({ collaborators: 1 });
 ProjectSchema.index({ deliverables: 1 });
-ProjectSchema.index({ quotation_id: 1 });
 ProjectSchema.index({ final_confirmed_rate_cards: 1 });
 ProjectSchema.index({ assigned_collaborators: 1 });
 ProjectSchema.index({ milestones: 1 });
