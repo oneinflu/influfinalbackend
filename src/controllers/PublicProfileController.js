@@ -75,7 +75,7 @@ const PublicProfileController = {
           { path: 'servicesSection.display_services.service_id' },
           { path: 'servicesSection.published_services' },
           { path: 'portfolioSection.showcase_media' },
-          { path: 'collaboratorsSection.published_collaborators' },
+          { path: 'collaboratorsSection.published_collaborators', populate: { path: 'users' } },
           { path: 'createdBy' },
           { path: 'updatedBy' },
         ])
