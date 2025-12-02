@@ -86,6 +86,28 @@ const InvoiceController = {
     }
   },
 
+  // Get invoices by owner userId (createdBy)
+  async getByUserId(req, res) {
+    try {
+      const { ok, auth } = await ensureOwnerOrAdmin(req);
+      if (!ok) return res.status(403).json({ error: 'Forbidden' });
+      const { userId } = req.params;
+      const oid = parseObjectId(userId);
+      if (!oid) return res.status(400).json({ error: 'Invalid userId' });
+
+      if (auth.type !== 'admin') {
+        if (String(oid) !== String(auth.id)) {
+          return res.status(403).json({ error: 'Forbidden: userId not owner' });
+        }
+      }
+
+      const items = await Invoice.find({ createdBy: oid }).lean();
+      return res.json(items);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+
   // Create invoice
   async create(req, res) {
     try {

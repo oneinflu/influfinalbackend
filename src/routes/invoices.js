@@ -5,6 +5,7 @@ import InvoiceController from '../controllers/InvoiceController.js';
 const router = express.Router();
 
 router.get('/', InvoiceController.list);
+router.get('/user/:userId', InvoiceController.getByUserId);
 router.get('/:id', InvoiceController.getById);
 router.post('/', InvoiceController.create);
 router.put('/:id', InvoiceController.update);

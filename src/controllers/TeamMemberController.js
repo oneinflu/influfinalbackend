@@ -327,6 +327,45 @@ const TeamMemberController = {
       return res.status(400).json({ error: err.message });
     }
   },
+
+  // Get team members by owner userId (managed_by)
+  async getByUserId(req, res) {
+    try {
+      const { managed_by } = req.query; // preserve existing query behavior
+      const auth = await getAuthFromRequest(req);
+      if (!auth || (auth.type !== 'admin' && auth.type !== 'user')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      const { userId } = req.params;
+      const ownerOid = parseObjectId(userId);
+      if (!ownerOid) return res.status(400).json({ error: 'Invalid userId' });
+
+      const filter = { managed_by: ownerOid };
+      if (auth.type !== 'admin') {
+        const entity = auth.entity || {};
+        if (entity?.registration?.isOwner) {
+          if (String(ownerOid) !== String(auth.id)) {
+            return res.status(403).json({ error: 'Forbidden: userId not owner' });
+          }
+        } else {
+          const email = entity?.registration?.email;
+          if (!email) return res.status(403).json({ error: 'Forbidden' });
+          const tm = await TeamMember.findOne({ email, managed_by: ownerOid, status: 'active' }).select('role managed_by').lean();
+          if (!tm || !tm.role) return res.status(403).json({ error: 'Forbidden' });
+          const assignedRole = await Role.findById(tm.role).select('permissions').lean();
+          const hasView = assignedRole && assignedRole.permissions && (
+            Object.values(assignedRole.permissions).some((g) => g && g.view_team === true) ||
+            assignedRole.permissions.view_team === true
+          );
+          if (!hasView) return res.status(403).json({ error: 'Forbidden: requires view_team permission' });
+        }
+      }
+      const items = await TeamMember.find(filter).lean();
+      return res.json(items);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
 };
 
 export default TeamMemberController;

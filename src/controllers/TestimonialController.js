@@ -2,6 +2,9 @@
 // Exposes: list, getById, create, update, remove
 
 import Testimonial from '../models/Testimonial.js';
+import Client from '../models/Client.js';
+import Project from '../models/Project.js';
+import mongoose from 'mongoose';
 
 const TestimonialController = {
   // List testimonials with filters
@@ -35,6 +38,26 @@ const TestimonialController = {
       const doc = await Testimonial.findById(id).lean();
       if (!doc) return res.status(404).json({ error: 'Testimonial not found' });
       return res.json(doc);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+
+  // Get testimonials by owner userId via projects under owner clients
+  async getByUserId(req, res) {
+    try {
+      const { userId } = req.params;
+      let ownerId;
+      try { ownerId = new mongoose.Types.ObjectId(userId); } catch { ownerId = null; }
+      if (!ownerId) return res.status(400).json({ error: 'Invalid userId' });
+      const clients = await Client.find({ added_by: ownerId }).select('_id').lean();
+      const clientIds = clients.map((c) => c._id);
+      const projects = clientIds.length ? await Project.find({ client: { $in: clientIds } }).select('testimonials').lean() : [];
+      const testimonialIds = Array.from(new Set(
+        projects.flatMap((p) => Array.isArray(p.testimonials) ? p.testimonials.map((t) => String(t)).filter(Boolean) : [])
+      )).map((s) => { try { return new mongoose.Types.ObjectId(s); } catch { return null; } }).filter(Boolean);
+      const items = testimonialIds.length ? await Testimonial.find({ _id: { $in: testimonialIds } }).lean() : [];
+      return res.json(items);
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }

@@ -79,6 +79,47 @@ const ClientController = {
     }
   },
 
+  // Get clients by linked user_id
+  async getByUserId(req, res) {
+    try {
+      const auth = await getAuthFromRequest(req);
+      if (!auth || (auth.type !== 'admin' && auth.type !== 'user')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      const { userId } = req.params;
+      let oid;
+      try { oid = new mongoose.Types.ObjectId(userId); } catch { oid = null; }
+      if (!oid) return res.status(400).json({ error: 'Invalid userId' });
+
+      const filter = { user_id: oid };
+      if (auth.type !== 'admin') {
+        const entity = auth.entity || {};
+        let ownerScopeId = null;
+        if (entity?.registration?.isOwner) {
+          ownerScopeId = auth.id;
+        } else {
+          const email = entity?.registration?.email;
+          if (!email) return res.status(403).json({ error: 'Forbidden' });
+          const tm = await TeamMember.findOne({ email, status: 'active' }).select('role managed_by').lean();
+          if (!tm || !tm.role || !tm.managed_by) return res.status(403).json({ error: 'Forbidden' });
+          const assignedRole = await Role.findById(tm.role).select('permissions').lean();
+          const hasView = assignedRole && assignedRole.permissions && (
+            Object.values(assignedRole.permissions).some((g) => g && g.view_client === true) ||
+            assignedRole.permissions.view_client === true
+          );
+          if (!hasView) return res.status(403).json({ error: 'Forbidden: missing view_client permission' });
+          ownerScopeId = tm.managed_by;
+        }
+        filter.added_by = ownerScopeId;
+      }
+
+      const items = await Client.find(filter).lean();
+      return res.json(items);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+
   // Create client
   async create(req, res) {
       try {

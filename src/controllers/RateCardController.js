@@ -106,6 +106,36 @@ const RateCardController = {
     }
   },
 
+  // Get rate cards by owner userId
+  async getByUserId(req, res) {
+    try {
+      const auth = await getAuthFromRequest(req);
+      if (!auth || (auth.type !== 'admin' && auth.type !== 'user')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      const { userId } = req.params;
+      const ownerId = parseObjectId(userId);
+      if (!ownerId) return res.status(400).json({ error: 'Invalid userId' });
+
+      const filter = { ownerRef: ownerId };
+      if (auth.type !== 'admin') {
+        const entity = auth.entity || {};
+        if (entity?.registration?.isOwner) {
+          if (String(ownerId) !== String(auth.id)) {
+            return res.status(403).json({ error: 'Forbidden: userId not owner' });
+          }
+        } else {
+          filter.visibility = 'public';
+          filter.isActive = true;
+        }
+      }
+      const items = await RateCard.find(filter).lean();
+      return res.json(items);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+
   async create(req, res) {
     try {
       const auth = await getAuthFromRequest(req);
@@ -232,4 +262,3 @@ const RateCardController = {
 };
 
 export default RateCardController;
-

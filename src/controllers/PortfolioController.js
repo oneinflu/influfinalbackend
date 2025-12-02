@@ -59,6 +59,19 @@ const PortfolioController = {
     }
   },
 
+  // Get portfolio items by owner userId (belongs_to)
+  async getByUserId(req, res) {
+    try {
+      const { userId } = req.params;
+      const oid = parseObjectId(userId);
+      if (!oid) return res.status(400).json({ error: 'Invalid userId' });
+      const items = await Portfolio.find({ belongs_to: oid }).lean();
+      return res.json(items);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+
   // Create portfolio item
   async create(req, res) {
     try {

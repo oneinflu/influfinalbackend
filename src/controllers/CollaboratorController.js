@@ -151,6 +151,46 @@ const CollaboratorController = {
     }
   },
 
+  // Get collaborators by linked users (userId)
+  async getByUserId(req, res) {
+    try {
+      const auth = await getAuthFromRequest(req);
+      if (!auth || (auth.type !== 'admin' && auth.type !== 'user')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      const { userId } = req.params;
+      const oid = parseObjectId(userId);
+      if (!oid) return res.status(400).json({ error: 'Invalid userId' });
+
+      const filter = { users: oid };
+      if (auth.type !== 'admin') {
+        const entity = auth.entity || {};
+        let ownerScopeId = null;
+        if (entity?.registration?.isOwner) {
+          ownerScopeId = new mongoose.Types.ObjectId(auth.id);
+        } else {
+          const email = entity?.registration?.email;
+          if (!email) return res.status(403).json({ error: 'Forbidden' });
+          const tm = await TeamMember.findOne({ email, status: 'active' }).select('role managed_by').lean();
+          if (!tm || !tm.role || !tm.managed_by) return res.status(403).json({ error: 'Forbidden' });
+          const assignedRole = await Role.findById(tm.role).select('permissions').lean();
+          const hasView = assignedRole && assignedRole.permissions && (
+            Object.values(assignedRole.permissions).some((g) => g && g.view_collaborator === true) ||
+            assignedRole.permissions.view_collaborator === true
+          );
+          if (!hasView) return res.status(403).json({ error: 'Forbidden: missing view_collaborator permission' });
+          ownerScopeId = tm.managed_by;
+        }
+        filter.managed_by = ownerScopeId;
+      }
+
+      const items = await Collaborator.find(filter).lean();
+      return res.json(items);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+
   // Create collaborator (unique trio users+managed_by+type)
   async create(req, res) {
     try {

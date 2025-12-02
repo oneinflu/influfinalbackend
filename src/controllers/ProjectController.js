@@ -128,6 +128,49 @@ const ProjectController = {
     }
   },
 
+  // Get projects by owner userId (through owner-added clients)
+  async getByUserId(req, res) {
+    try {
+      const auth = await getAuthFromRequest(req);
+      if (!auth || (auth.type !== 'admin' && auth.type !== 'user')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      const { userId } = req.params;
+      const ownerId = parseObjectId(userId);
+      if (!ownerId) return res.status(400).json({ error: 'Invalid userId' });
+
+      if (auth.type !== 'admin') {
+        const entity = auth.entity || {};
+        if (entity?.registration?.isOwner) {
+          if (String(ownerId) !== String(auth.id)) {
+            return res.status(403).json({ error: 'Forbidden: userId not owner' });
+          }
+        } else {
+          const email = entity?.registration?.email;
+          if (!email) return res.status(403).json({ error: 'Forbidden' });
+          const tm = await TeamMember.findOne({ email, status: 'active' }).select('role managed_by').lean();
+          if (!tm || !tm.role || !tm.managed_by) return res.status(403).json({ error: 'Forbidden' });
+          const assignedRole = await Role.findById(tm.role).select('permissions').lean();
+          const hasView = assignedRole && assignedRole.permissions && (
+            Object.values(assignedRole.permissions).some((g) => g && g.view_project === true) ||
+            assignedRole.permissions.view_project === true
+          );
+          if (!hasView) return res.status(403).json({ error: 'Forbidden: missing view_project permission' });
+          if (String(tm.managed_by) !== String(ownerId)) {
+            return res.status(403).json({ error: 'Forbidden: userId out of scope' });
+          }
+        }
+      }
+
+      const clients = await Client.find({ added_by: ownerId }).select('_id').lean();
+      const clientIds = clients.map((c) => c._id);
+      const items = await Project.find({ client: { $in: clientIds } }).lean();
+      return res.json(items);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+
   // Create project
   async create(req, res) {
     try {

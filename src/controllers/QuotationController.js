@@ -74,6 +74,42 @@ const QuotationController = {
     }
   },
 
+  // Get quotations by owner userId via client/service/rateCard ownership
+  async getByUserId(req, res) {
+    try {
+      const auth = await getAuthFromRequest(req);
+      if (!auth || (auth.type !== 'admin' && !(auth.type === 'user' && auth.entity?.registration?.isOwner))) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      const { userId } = req.params;
+      const ownerId = parseObjectId(userId);
+      if (!ownerId) return res.status(400).json({ error: 'Invalid userId' });
+      if (auth.type !== 'admin' && String(ownerId) !== String(auth.id)) {
+        return res.status(403).json({ error: 'Forbidden: userId not owner' });
+      }
+
+      const [clients, services, rateCards] = await Promise.all([
+        Client.find({ added_by: ownerId }).select('_id').lean(),
+        Service.find({ user_id: ownerId }).select('_id').lean(),
+        RateCard.find({ ownerRef: ownerId }).select('_id').lean(),
+      ]);
+      const clientIds = clients.map((c) => c._id);
+      const serviceIds = services.map((s) => s._id);
+      const rateCardIds = rateCards.map((r) => r._id);
+
+      const items = await Quotation.find({
+        $or: [
+          { clientId: { $in: clientIds } },
+          { serviceId: { $in: serviceIds } },
+          { rateCardId: { $in: rateCardIds } },
+        ],
+      }).lean();
+      return res.json(items);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+
   async create(req, res) {
       try {
         const auth = await getAuthFromRequest(req);

@@ -5,6 +5,7 @@ import PortfolioController from '../controllers/PortfolioController.js';
 const router = express.Router();
 
 router.get('/', PortfolioController.list);
+router.get('/user/:userId', PortfolioController.getByUserId);
 router.get('/:id', PortfolioController.getById);
 router.post('/', PortfolioController.create);
 router.put('/:id', PortfolioController.update);

@@ -5,6 +5,7 @@ import CollaboratorController from '../controllers/CollaboratorController.js';
 const router = express.Router();
 
 router.get('/', CollaboratorController.list);
+router.get('/user/:userId', CollaboratorController.getByUserId);
 router.get('/:id', CollaboratorController.getById);
 router.post('/', CollaboratorController.create);
 router.put('/:id', CollaboratorController.update);

@@ -5,6 +5,7 @@ import ProjectController from '../controllers/ProjectController.js';
 const router = express.Router();
 
 router.get('/', ProjectController.list);
+router.get('/user/:userId', ProjectController.getByUserId);
 router.get('/:id', ProjectController.getById);
 router.post('/', ProjectController.create);
 router.put('/:id', ProjectController.update);
