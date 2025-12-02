@@ -2,6 +2,7 @@
 // This file defines the data structure, validation rules, and indexes.
 
 import mongoose from 'mongoose';
+import PublicProfile from './PublicProfile.js';
 
 // Reusable validators
 // Basic email regex for common formats
@@ -132,8 +133,8 @@ const PaymentInformationSchema = new mongoose.Schema(
 );
 
 // Main User schema
-const UserSchema = new mongoose.Schema(
-  {
+  const UserSchema = new mongoose.Schema(
+    {
     // Registration section: identification and account creation details
     registration: {
       // Full name with trimming of whitespace
@@ -270,12 +271,13 @@ const UserSchema = new mongoose.Schema(
     },
 
     // Audit references for who created/updated the record
-    audit: {
-      createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-      updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      audit: {
+        createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      },
+      publicProfileId: { type: mongoose.Schema.Types.ObjectId, ref: 'PublicProfile', default: null },
     },
-  },
-  {
+    {
     // Enable automatic top-level timestamps (createdAt, updatedAt)
     timestamps: true,
     // Include virtuals when converting to JSON/Object
@@ -334,6 +336,26 @@ UserSchema.pre('findOneAndUpdate', function (next) {
   }
   this.setUpdate(update);
   next();
+});
+
+UserSchema.post('save', async function (doc, next) {
+  try {
+    if (doc.publicProfileId) return next();
+    const slug = doc?.profile?.slug || '';
+    if (!slug) return next();
+    const exists = await PublicProfile.findOne({ ownerRef: doc._id }).select('_id').lean();
+    if (exists) {
+      await mongoose.model('User').findByIdAndUpdate(doc._id, { $set: { publicProfileId: exists._id } }).lean();
+      return next();
+    }
+    const pp = new PublicProfile({ ownerRef: doc._id, slug, createdBy: doc._id });
+    await pp.validate();
+    const saved = await pp.save();
+    await mongoose.model('User').findByIdAndUpdate(doc._id, { $set: { publicProfileId: saved._id } }).lean();
+    return next();
+  } catch (err) {
+    return next(err);
+  }
 });
 
 // Export the model
