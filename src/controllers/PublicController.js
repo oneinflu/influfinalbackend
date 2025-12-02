@@ -40,7 +40,7 @@ const PublicController = {
       if (!user) return res.status(404).json({ error: 'User not found' });
 
       // Cover photo and stats from PublicProfile, if available
-      const pub = await PublicProfile.findOne({ user_id: user._id })
+      const pub = await PublicProfile.findOne({ ownerRef: user._id })
         .select(['cover_photo', 'stats', 'featured_clients', 'showcase_media', 'bio', 'published_services', 'published_projects'])
         .lean();
 

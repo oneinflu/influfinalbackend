@@ -126,4 +126,16 @@ const PublicProfileSchema = new mongoose.Schema(
 PublicProfileSchema.index({ ownerRef: 1, slug: 1 }, { unique: true });
 
 const PublicProfile = mongoose.model('PublicProfile', PublicProfileSchema);
+
+try {
+  mongoose.connection.on('open', async () => {
+    try {
+      const indexes = await PublicProfile.collection.indexes();
+      if (Array.isArray(indexes) && indexes.some((i) => i.name === 'user_id_1')) {
+        await PublicProfile.collection.dropIndex('user_id_1');
+      }
+    } catch {}
+  });
+} catch {}
+
 export default PublicProfile;
